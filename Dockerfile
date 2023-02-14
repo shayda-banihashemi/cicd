@@ -1,32 +1,43 @@
-FROM python:3.11.1-slim-buster
-RUN apt-get update && apt-get install -y zsh
+FROM python:3.11-slim-bullseye
+RUN apt-get update && apt-get install -y zsh 
 SHELL ["/bin/zsh", "-c", "-o", "pipefail"]
-RUN python -m pip install --upgrade pip
 
-RUN python -m venv /opt/prod \
-    && /opt/prod/bin/python -m pip install --upgrade pip \
-    && chmod +x /opt/prod/bin/activate
-
-RUN if ! getent passwd app; then groupadd -g 1000 app && useradd -u 1000 -g 1000 -d /home/app -m -s /bin/zsh app; fi \
+RUN if ! getent passwd app; then groupadd -g 1000 app \
+    && useradd -u 1000 -g 1000 -d /home/app -m -s /bin/zsh app; fi \
     && echo app:app | chpasswd \
     && echo 'app ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
     && mkdir -p /etc/sudoers.d \
     && echo 'app ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers.d/app \
     && chmod 0440 /etc/sudoers.d/app \
-	  && apt-get autoremove \
+    && apt-get autoremove \
     && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && chown -R app /opt/prod
+    && rm -rf /var/lib/apt/lists/* 
 
 USER app
 WORKDIR /home/app
+
 RUN touch /home/app/.zshrc \
-    && echo 'export PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' >> /home/app/.zshrc \
-    && echo 'PS1="$ "' >> /home/app/.zshrc \
-    && echo 'alias prod="deactivate 2> /dev/null ; . /opt/prod/bin/activate"' >> /home/app/.zshrc  \
+   && echo 'PS1="$ "' >> /home/app/.zshrc \
+   && echo 'export PATH=/home/app/.local/bin:$PATH' >> /home/app/.zshrc
+
+
+RUN \
+    source /home/app/.zshrc \
     && mkdir -p /home/app/app \
     && mkdir -p /home/app/app/tests \
     && mkdir -p /home/app/app/docs \
     && mkdir -p /home/app/data
 
-CMD python
+ENV PATH="/home/app/local/bin:${PATH}"
+ENV COLORTERM=truecolor
+ENV PYTHONDONTWRITEBYTECODE=1
+
+
+WORKDIR /home/app/app
+RUN python -m pip install --user --upgrade pip
+COPY --chown=shaydabanihashemi requirements.txt .
+COPY --chown=shaydabanihashemi requirements.dev.txt .
+RUN python -m pip install --user -r requirements.txt
+RUN python -m pip install --user -r requirements.dev.txt
+COPY --chown=shaydabanihashemi src/ /home/app/app/src
+COPY --chown=shaydabanihashemi tests/ /home/app/app/tests/
